@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>3D Globe with Google Sheet Data</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden; /* Disable scrolling */
+      touch-action: none; /* Prevent touch gestures like scrolling this is a test to see if it updates in github */
+    }
+    canvas {
+      display: block;
+    }
+    #popup {
+      position: absolute;
+      background-color: white;
+      padding: 10px;
+      border: 1px solid black;
+      display: none;
+      font-family: 'Open Sans', serif;
+      color: #0e416c;
+      max-width: 300px;
+      overflow-y: auto;
+      word-wrap: break-word;
+      border-radius: 10px;
+    }
+    #popup img {
+      max-width: 100%;
+      height: auto;
+    }
+    #reset-button {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      padding: 10px 20px;
+      background-color: #0063a3; /* Change background color to #0063a3 */
+      color: #fbad26; /* Change text color to #fbad26 */
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: 'Open Sans', serif;
+      font-weight: bold;
+    }
+    #reset-button:hover {
+      background-color: #004d7a; /* Optional: Darker shade for hover effect */
+    }
+    #close-popup {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: transparent;
+      border: none;
+      font-size: 18px;
+      font-weight: bold;
+      color: #0e416c;
+      cursor: pointer;
+    }
+
+    #close-popup:hover {
+      color: #004d7a; /* Darker shade for hover effect */
+    }
+
+    /* Adjust popup size for mobile devices */
+    @media (max-width: 768px) {
+      #popup {
+        max-width: 375px; /* Increase the max width */
+        font-size: 1.2em; /* Slightly increase font size */
+        padding: 15px; /* Add more padding */
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Reset Button -->
+  <button id="reset-button">Reset Globe</button>
+
+  <!-- Popup for location details -->
+  <div id="popup">
+    <button id="close-popup" style="position: absolute; top: 5px; right: 5px; background: transparent; border: none; font-size: 18px; font-weight: bold; cursor: pointer;">&times;</button>
+    <div class="popup-content">
+      <h1 id="location-title"></h1>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@latest/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+    const geometry = new THREE.SphereGeometry(1, 32, 32);
+    const texture = new THREE.TextureLoader().load('8081_earthmap10k.jpg');
+    const material = new THREE.MeshBasicMaterial({ map: texture });
+    const globe = new THREE.Mesh(geometry, material);
+    scene.add(globe);
+    camera.position.z = 2;
+
+    // Fetch data from Google Sheet (replace with your actual Google Sheet link)
+    fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vSs2rlk41tTDPVINsSDUBax78CqTqMxmJ16_LHeHFw-hcqFwtWKN0EeRFf-8mnAsY0e-4d1wWdyRfSO/pub?gid=2018109647&single=true&output=csv')
+      .then(response => response.text())
+      .then(data => {
+        const parsed = Papa.parse(data, { header: true, skipEmptyLines: true });
+        addPinsToGlobe(parsed.data);
+      });
+
+    function parseCSV(csvData) {
+      const rows = csvData.split('\n');
+      const headers = rows[0].split(',');
+      const locations = [];
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i].split(',');
+        const location = {};
+        for (let j = 0; j < headers.length; j++) {
+          const header = headers[j].trim();
+          location[header] = row[j];
+        }
+        locations.push(location);
+      }
+      return locations;
+    }
+
+    function latLongToVector3(lat, lng) {
+      const phi = (90 - lat) * Math.PI / 180;
+      const theta = (lng + 180) * Math.PI / 180;
+      const x = -Math.sin(phi) * Math.cos(theta);
+      const y = Math.cos(phi);
+      const z = Math.sin(phi) * Math.sin(theta);
+      return new THREE.Vector3(x, y, z);
+    }
+
+    function addPinsToGlobe(locations) {
+      // Create materials for each machine type (replace with your actual image URLs)
+      const excavatorMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('ico-industries-construction_white.png', undefined, undefined, (err) => {
+            console.error('Error loading excavator image:', err);
+        })
+      });
+      const dozerMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('Bulldozer_white.png', undefined, undefined, (err) => {
+            console.error('Error loading dozer image:', err);
+        })
+      });
+      const compactorMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('Roller_white.png', undefined, undefined, (err) => {
+            console.error('Error loading compactor image:', err);
+        })
+      });
+      const ctlMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('Bulldozer_white.png', undefined, undefined, (err) => {
+            console.error('Error loading ctl image:', err);
+        })
+      });
+      const graderMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('White Grader.png', undefined, undefined, (err) => {
+            console.error('Error loading grader image:', err);
+        })
+      });
+      const tsMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('icon-monitoring_white.png', undefined, undefined, (err) => {
+            console.error('Error loading ts image:', err);
+        })
+      });
+      const pdMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('PD White.png', undefined, undefined, (err) => {
+            console.error('Error loading pd image:', err);
+        })
+      });
+
+      locations.forEach(location => {
+        console.log('All keys:', Object.keys(location));
+        console.log('Latitude raw:', location["Latitude"], 'Longitude raw:', location["Longitude"]);
+        console.log('All keys:', Object.keys(location));
+
+        const lat = parseFloat(location["Latitude"] ? location["Latitude"].trim() : '');
+        const lng = parseFloat(location["Longitude"] ? location["Longitude"].trim() : '');
+        if (isNaN(lat) || isNaN(lng)) {
+          console.warn('Skipping invalid location:', location);
+          return;
+        }
+
+        const machineType = location["Machine Type"] ? location["Machine Type"].toLowerCase().trim() : '';
+
+        let pinMaterial;
+        switch (machineType) {
+          case 'hex': pinMaterial = excavatorMaterial; break;
+          case 'dozer': pinMaterial = dozerMaterial; break;
+          case 'wheel loader': pinMaterial = dozerMaterial; break;
+          case 'grader': pinMaterial = graderMaterial; break;
+          case 'compact machine': pinMaterial = ctlMaterial; break;
+          case 'soil/landfill compactor': pinMaterial = compactorMaterial; break;
+          case 'drilling/piling': pinMaterial = pdMaterial; break;
+          case 'paver': pinMaterial = pdMaterial; break;
+          case 'asphalt compactor': pinMaterial = compactorMaterial; break;
+          default:
+            console.warn(`Unknown machine type: ${location["Machine Type"]}. Using default.`);
+            pinMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        }
+
+        const pin = new THREE.Sprite(pinMaterial);
+
+        if (
+          machineType === 'paver' ||
+          machineType === 'drilling/piling' ||
+          machineType === 'grader'
+        ) {
+          pin.scale.set(0.145, 0.145, 0.145);
+        } else {
+          pin.scale.set(0.085, 0.085, 0.085);
+        }
+
+        const locationVector = latLongToVector3(lat, lng);
+        pin.position.copy(locationVector);
+        pin.position.setLength(1.045);
+
+        pin.userData = {
+          project: location["Project"],
+          location: location["Location"],
+          link: location["Link"],
+          baseScale: pin.scale.clone()
+        };
+
+        globe.add(pin);
+      });
+
+      resolveOverlaps(globe.children.filter(child => child instanceof THREE.Sprite));
+    }
+
+    function resolveOverlaps(pins) {
+      const minDistance = 0.1; // Minimum distance between pins
+      const maxIterations = 10; // Limit iterations to prevent infinite loops
+
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        let hasOverlap = false;
+
+        for (let i = 0; i < pins.length; i++) {
+          for (let j = i + 1; j < pins.length; j++) {
+            const pinA = pins[i];
+            const pinB = pins[j];
+
+            const distance = pinA.position.distanceTo(pinB.position);
+            if (distance < minDistance) {
+              hasOverlap = true;
+
+              // Calculate a repelling vector
+              const direction = pinA.position.clone().sub(pinB.position).normalize();
+              const overlap = minDistance - distance;
+
+              // Push pins apart
+              pinA.position.add(direction.clone().multiplyScalar(overlap / 2));
+              pinB.position.add(direction.clone().multiplyScalar(-overlap / 2));
+            }
+          }
+        }
+
+        if (!hasOverlap) break; // Stop if no overlaps are detected
+      }
+    }
+
+    // Add event listeners for mouse interaction
+    renderer.domElement.addEventListener('mousedown', onMouseDown, false);
+    renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+    renderer.domElement.addEventListener('mouseup', onMouseUp, false);
+    renderer.domElement.addEventListener('click', onClick, false);
+
+    // Add zoom functionality
+    renderer.domElement.addEventListener('wheel', onMouseWheel, false);
+
+    // Add touch event listeners
+    renderer.domElement.addEventListener('touchstart', onTouchStart, false);
+    renderer.domElement.addEventListener('touchmove', onTouchMove, false);
+    renderer.domElement.addEventListener('touchend', onTouchEnd, false);
+
+    // Prevent default touch behavior on the globe
+    renderer.domElement.addEventListener('touchstart', event => event.preventDefault(), { passive: false });
+    renderer.domElement.addEventListener('touchmove', event => event.preventDefault(), { passive: false });
+    renderer.domElement.addEventListener('touchend', event => event.preventDefault(), { passive: false });
+
+    // Add reset button functionality
+    document.getElementById('reset-button').addEventListener('click', resetGlobeOrientation);
+
+    function resetGlobeOrientation() {
+      const targetRotationX = 0; // Upright orientation
+      const targetRotationY = 0; // Centered horizontally
+
+      const animationDuration = 2; // Duration in seconds
+      const animationSteps = 60 * animationDuration; // Assuming 60 FPS
+      const deltaX = (targetRotationX - globe.rotation.x) / animationSteps;
+      const deltaY = (targetRotationY - globe.rotation.y) / animationSteps;
+
+      let step = 0;
+      function animateReset() {
+        if (step < animationSteps) {
+          globe.rotation.x += deltaX;
+          globe.rotation.y += deltaY;
+          step++;
+          requestAnimationFrame(animateReset);
+        } else {
+          globe.rotation.x = targetRotationX;
+          globe.rotation.y = targetRotationY;
+        }
+      }
+      animateReset();
+    }
+
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let isRotating = true; // Flag to control rotation
+    let hoveredIcon = null;
+
+    function onMouseDown(event) {
+      isDragging = true;
+      previousMousePosition = { x: event.clientX, y: event.clientY };
+      isRotating = false; // Stop rotation when mouse is down
+    }
+
+    function onMouseMove(event) {
+      const mouse = new THREE.Vector2();
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(globe.children);
+
+      if (intersects.length > 0) {
+        const intersect = intersects[0];
+        if (intersect.object instanceof THREE.Sprite) { // Check if it's a sprite
+          if (hoveredIcon !== intersect.object) {
+            // Reset the scale of the previously hovered icon
+            if (hoveredIcon) {
+              const baseScale = hoveredIcon.userData.baseScale;
+              hoveredIcon.scale.set(baseScale.x, baseScale.y, baseScale.z); // Reset to base size
+            }
+
+            // Set the new hovered icon and enlarge it
+            hoveredIcon = intersect.object;
+            hoveredIcon.scale.set(
+              hoveredIcon.userData.baseScale.x * 1.2, // Enlarge by 20%
+              hoveredIcon.userData.baseScale.y * 1.2,
+              hoveredIcon.userData.baseScale.z * 1.2
+            );
+          }
+        }
+      } else {
+        // Reset the scale if no icon is hovered
+        if (hoveredIcon) {
+          const baseScale = hoveredIcon.userData.baseScale;
+          hoveredIcon.scale.set(baseScale.x, baseScale.y, baseScale.z); // Reset to base size
+          hoveredIcon = null;
+        }
+      }
+
+      if (!isDragging) return;
+      const deltaX = event.clientX - previousMousePosition.x;
+      const deltaY = event.clientY - previousMousePosition.y;
+      globe.rotation.y += deltaX * 0.005;
+      globe.rotation.x += deltaY * 0.005;
+      previousMousePosition = { x: event.clientX, y: event.clientY };
+    }
+
+    function onMouseUp() {
+      isDragging = false;
+      // Resume rotation after 5 seconds
+      setTimeout(() => {
+        isRotating = true;
+      }, 6000);
+    }
+
+    function onClick(event) {
+      const mouse = new THREE.Vector2();
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(globe.children);
+
+      if (intersects.length > 0) {
+        const intersect = intersects[0];
+        if (intersect.object instanceof THREE.Sprite) { // Check if it's a sprite
+          const popup = document.getElementById('popup');
+          const titleElement = document.getElementById('location-title');
+          const locationData = intersect.object.userData;
+          titleElement.innerHTML = `
+            <a href="${locationData.link}" target="_blank" style="color: #0063a3; text-decoration: underline;">
+              ${locationData.project}
+            </a>
+            <div style="font-size: 1em; color: #333; margin-top: 0.5em;">
+              ${locationData.location}
+            </div>
+          `; // Make the title a clickable link
+
+          // Temporarily make the popup visible to calculate dimensions
+          popup.style.display = 'block';
+          const popupWidth = popup.offsetWidth;
+          const popupHeight = popup.offsetHeight;
+
+          // Center the popup in the viewport
+          popup.style.left = `${(window.innerWidth - popupWidth) / 2}px`;
+          popup.style.top = `${(window.innerHeight - popupHeight) / 2}px`;
+
+          event.stopPropagation();
+        }
+      } else {
+        const popup = document.getElementById('popup');
+        popup.style.display = 'none';
+      }
+    }
+
+    function onMouseWheel(event) {
+      event.preventDefault();
+      const delta = Math.sign(event.deltaY);
+      camera.position.z += delta * 0.2;
+      camera.position.z = Math.max(1.5, Math.min(10, camera.position.z));
+    }
+
+    let isTouching = false;
+    let previousTouchPosition = { x: 0, y: 0 };
+    let initialPinchDistance = null;
+
+    function onTouchStart(event) {
+      isDragging = false; // Reset dragging flag
+      if (event.touches.length === 1) {
+        isTouching = true;
+        const touch = event.touches[0];
+        previousTouchPosition = { x: touch.clientX, y: touch.clientY };
+        isRotating = false; // Stop rotation when touch starts
+      } else if (event.touches.length === 2) {
+        initialPinchDistance = getPinchDistance(event.touches);
+      }
+    }
+
+    function onTouchMove(event) {
+      if (event.touches.length === 1 && isTouching) {
+        isDragging = true; // Set dragging flag
+        const touch = event.touches[0];
+        const deltaX = touch.clientX - previousTouchPosition.x;
+        const deltaY = touch.clientY - previousTouchPosition.y;
+
+        globe.rotation.y += deltaX * 0.005;
+        globe.rotation.x += deltaY * 0.005;
+
+        previousTouchPosition = { x: touch.clientX, y: touch.clientY };
+      } else if (event.touches.length === 2) {
+        const currentPinchDistance = getPinchDistance(event.touches);
+        if (initialPinchDistance) {
+          const delta = currentPinchDistance - initialPinchDistance;
+          camera.position.z -= delta * 0.01; // Adjust zoom sensitivity
+          camera.position.z = Math.max(1.5, Math.min(10, camera.position.z)); // Clamp zoom range
+        }
+        initialPinchDistance = currentPinchDistance;
+      }
+    }
+
+    function onTouchEnd(event) {
+      if (event.touches.length === 0 && !isDragging && !initialPinchDistance) {
+        // Simulate a click on touchend
+        const touch = event.changedTouches[0]; // Get the first touch point
+        const mouse = new THREE.Vector2();
+        mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(globe.children);
+
+        if (intersects.length > 0) {
+          const intersect = intersects[0];
+          if (intersect.object instanceof THREE.Sprite) { // Check if it's a sprite
+            const popup = document.getElementById('popup');
+            const titleElement = document.getElementById('location-title');
+            const locationData = intersect.object.userData;
+            titleElement.innerHTML = `
+              <a href="${locationData.link}" target="_blank" style="color: #0063a3; text-decoration: underline;">
+                ${locationData.project}
+              </a>
+              <div style="font-size: 1em; color: #333; margin-top: 0.5em;">
+                ${locationData.location}
+              </div>
+            `; // Make the title a clickable link
+
+            // Temporarily make the popup visible to calculate dimensions
+            popup.style.display = 'block';
+            const popupWidth = popup.offsetWidth;
+            const popupHeight = popup.offsetHeight;
+
+            // Center the popup in the viewport
+            popup.style.left = `${(window.innerWidth - popupWidth) / 2}px`;
+            popup.style.top = `${(window.innerHeight - popupHeight) / 2}px`;
+          }
+        }
+      }
+
+      isTouching = false;
+      initialPinchDistance = null;
+      setTimeout(() => {
+        isRotating = true;
+      }, 5000);
+    }
+
+    function getPinchDistance(touches) {
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+      return Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+    }
+
+    // Create a particle system for the stars
+    const starGeometry = new THREE.BufferGeometry();
+    const starMaterial = new THREE.PointsMaterial({ color: 0xffffff });
+    const starVertices =[];
+    for (let i = 0; i < 10000; i++) {
+      const x = (Math.random() - 0.5) * 2000;
+      const y = (Math.random() - 0.5) * 2000;
+      const z = (Math.random() - 0.5) * 2000;
+      starVertices.push(x, y, z);
+    }
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Make pins face the camera
+      globe.children.forEach(pin => {
+        if (pin instanceof THREE.Sprite) { // Check if it's a sprite
+          pin.lookAt(camera.position);
+        }
+      });
+
+      if (isRotating) {
+        globe.rotation.y += 0.002;
+      }
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+document.addEventListener('mousedown', handleInteractionEvent);
+document.addEventListener('touchstart', handleInteractionEvent);
+document.addEventListener('click', handleInteractionEvent);
+
+function handleInteractionEvent(event) {
+  const popup = document.getElementById('popup');
+  const isInsidePopup = popup.contains(event.target);
+  const isCanvas = renderer.domElement.contains(event.target);
+
+  if (popup.style.display === 'block' && !isInsidePopup && !isCanvas) {
+    popup.style.display = 'none';
+  }
+}
+
+document.getElementById('close-popup').addEventListener('click', () => {
+  const popup = document.getElementById('popup');
+  popup.style.display = 'none';
+});
+
+  </script>
+</body>
+</html>
